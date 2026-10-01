@@ -9,6 +9,7 @@ import uuid
 import httpx
 import streamlit as st
 import time
+import hmac
 
 from dotenv import load_dotenv
 from gtm_agents.planner import build_brief
@@ -22,6 +23,30 @@ st.set_page_config(page_title="Market Research & GTM Planner", layout="wide")
 
 st.title("Multi-Agent Market Research & GTM Planner")
 st.caption("Compare n8n and CrewAI implementations using the same research brief.")
+
+# Require a configured access code before allowing billable submissions.
+expected_code = os.getenv("DEMO_ACCESS_CODE", "")
+
+if not expected_code:
+    st.error("Demo access is not configured. Contact the app owner.")
+    st.stop()
+
+entered_code = st.text_input(
+    "Demo access code",
+    type="password",
+    key="demo_access_code",
+)
+
+if not entered_code:
+    st.info("Enter the access code provided by the app owner, then press Enter.")
+    st.stop()
+
+if not hmac.compare_digest(
+    entered_code.encode("utf-8"),
+    expected_code.encode("utf-8"),
+):
+    st.error("Incorrect access code.")
+    st.stop()
 
 # Collect the same brief fields for either implementation.
 with st.form("research_brief"):
