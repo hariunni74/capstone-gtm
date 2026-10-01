@@ -1,0 +1,22 @@
+services:
+  mcp:
+    image: capstone-gtm:local
+    command: ["python", "mcp_server/server.py"]
+    environment:
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:?Set SERPAPI_API_KEY in .env}
+
+  app:
+    image: capstone-gtm:local
+    ports:
+      - "127.0.0.1:8502:8501"
+    env_file:
+      - .env
+    environment:
+      MCP_SERVER_URL: http://mcp:8000/mcp
+    volumes:
+      - demo_logs:/app/logs
+    depends_on:
+      - mcp
+
+volumes:
+  demo_logs:

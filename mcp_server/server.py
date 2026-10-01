@@ -1,5 +1,5 @@
 import os
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 import json
@@ -25,7 +25,7 @@ def search_market(query: str) -> list[dict]:
 
     for attempt in range(2):
         try:
-            with urlopen(url, timeout=8) as response:
+            with urlopen(url, timeout=20) as response:
                 data = json.load(response)
             break
         except TimeoutError:
@@ -43,6 +43,22 @@ def search_market(query: str) -> list[dict]:
                 "error_code": f"http_{error.code}",
                 "error": f"SerpAPI returned HTTP {error.code}.",
                 "retryable": error.code == 429 or error.code >= 500,
+            }]
+        except URLError as error:
+            # urllib can wrap a timeout or connection failure in URLError.
+            if attempt == 0:
+                continue
+
+            is_timeout = isinstance(error.reason, TimeoutError)
+            return [{
+                "status": "error",
+                "error_code": "timeout" if is_timeout else "connection_error",
+                "error": (
+                    "SerpAPI search timed out after two attempts."
+                    if is_timeout
+                    else "Could not connect to SerpAPI after two attempts."
+                ),
+                "retryable": False,
             }]
 
     if data.get("error"):

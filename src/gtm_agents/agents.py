@@ -26,7 +26,13 @@ def build_agents() -> dict[str, Agent]:
             goal="Find relevant, attributable evidence for the research questions.",
             backstory="You search for sources and record what each source actually supports.",
             llm=llm,
-            mcps=[MCPServerHTTP(url="http://localhost:8000/mcp", streamable=True)],
+            # Use the configured service address, defaulting to local development.
+            mcps=[
+                MCPServerHTTP(
+                    url=os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp"),
+                    streamable=True,
+                )
+            ],
             allow_delegation=False,
             max_iter=1,
             verbose=True,

@@ -1,0 +1,27 @@
+# Credentials
+.env
+.env.*
+!.env.example
+
+# Git history and local environment
+.git/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Generated files and runtime data
+logs/
+outputs/
+*.log
+eight_question_*.json
+crewai_file_list.txt
+
+# Local backups and download metadata
+app-copy.py
+*:Zone.Identifier
+
+# Build artifacts
+build/
+dist/
+wheels/
+*.egg-info/
