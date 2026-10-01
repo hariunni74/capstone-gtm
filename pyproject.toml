@@ -8,9 +8,11 @@ dependencies = [
     "crewai>=1.15.22",
     "httpx>=0.28.1",
     "langfuse>=4.15.6",
+    "markdown-it-py>=4.2.0",
     "mcp[cli]>=1,<2",
     "openinference-instrumentation-crewai>=1.1.18",
     "openinference-instrumentation-openai>=0.1.61",
+    "python-docx>=1.2.0",
     "python-dotenv>=1.2.3",
     "streamlit>=1.64.0",
 ]

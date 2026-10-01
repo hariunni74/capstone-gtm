@@ -17,6 +17,7 @@ from gtm_agents.flow import GTMFlow
 from gtm_agents.run_logging import log_run
 from gtm_agents.observability import setup_observability
 from gtm_agents.usage_limits import reserve_run
+from gtm_agents.report_export import build_word_report
 
 load_dotenv()
 
@@ -142,6 +143,40 @@ if submitted:
             with st.expander("Research candidates and source checks"):
                 st.code(flow.state.research_notes, language="json")
                 st.json(flow.state.source_checks)
+
+            # Export the completed result as word doc; no new research calls are made.
+            try:
+                word_report = build_word_report(
+                    brief={
+                        "topic": topic.strip(),
+                        "geography": geography.strip(),
+                        "target_customer": audience.strip(),
+                    },
+                    strategy=result["strategy_notes"],
+                    analysis=flow.state.analysis_notes,
+                    research_notes=flow.state.research_notes,
+                    source_checks=flow.state.source_checks,
+                    run_id=run_id,
+                    elapsed_seconds=elapsed_seconds,
+                )
+            except Exception:
+                # An export failure does not make the research run a failure.
+                st.warning(
+                    "Research completed, but the Word export could not "
+                    "be generated. You can still copy the results above."
+                )
+            else:
+                st.download_button(
+                    label="Download Word report",
+                    data=word_report,
+                    file_name=f"gtm_report_{run_id}.docx",
+                    mime=(
+                        "application/vnd.openxmlformats-officedocument."
+                        "wordprocessingml.document"
+                    ),
+                    on_click="ignore",
+                )
+
         except Exception as exc:
             log_run(
                 run_id=run_id,

@@ -2,7 +2,6 @@ import os
 
 from crewai import Agent, LLM
 from dotenv import load_dotenv
-from crewai.mcp import MCPServerHTTP
 
 load_dotenv()
 
@@ -23,18 +22,18 @@ def build_agents() -> dict[str, Agent]:
         ),
         "researcher": Agent(
             role="Research Agent",
-            goal="Find relevant, attributable evidence for the research questions.",
-            backstory="You search for sources and record what each source actually supports.",
+            goal=(
+                "Assess supplied search candidates for relevance "
+                "and record what they may support."
+            ),
+            backstory=(
+                "You classify supplied sources against the research brief. "
+                "You distinguish direct leads, adjacent context, and "
+                "irrelevant results without inventing evidence."
+            ),
             llm=llm,
-            # Use the configured service address, defaulting to local development.
-            mcps=[
-                MCPServerHTTP(
-                    url=os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp"),
-                    streamable=True,
-                )
-            ],
             allow_delegation=False,
-            max_iter=1,
+            max_iter=2,
             verbose=True,
         ),
         "analyst": Agent(

@@ -15,6 +15,7 @@ from crewai import Crew, Task
 from .agents import build_agents
 
 from .source_check import check_source
+from .search_client import fetch_candidates
 
 class GTMState(BaseModel):
     topic: str = ""
@@ -47,11 +48,13 @@ class GTMFlow(Flow[GTMState]):
                 "Write exactly eight concise web search queries, one for each "
                 "question below and in the same order. Use terms a source would actually contain. "
                 "Keep each query to roughly 5–10 words. "
-                "For question 1, search for market size and growth in the "
-                "supplied geography and product category. If no directly "
-                "matching market estimate is available, seek a measurable "
-                "adjacent market and clearly label it as context; do not "
-                "present it as the proposed product's market size. "
+                "For question 1, identify an established market category "
+                "underlying the proposed solution and search for its market "
+                "size or growth in the supplied geography. Avoid copying "
+                "the entire proposed product description into the query. "
+                "An adjacent category is a research lead, not an estimate "
+                "of the proposed product's addressable market. "
+                "Do not append a year unless the brief requests one. "
                 "For question 2, focus on the supplied target customer's "
                 "segments, buyers, and decision makers. "
                 "Interpret all terminology using the supplied topic, "
@@ -98,48 +101,86 @@ class GTMFlow(Flow[GTMState]):
     @listen(prepare_brief)
     def research_first_question(self, brief: ResearchBrief) -> dict:
         findings = []
+        self.state.source_checks = []
 
         if len(self.state.search_queries) != len(brief.questions):
             raise ValueError("The search plan must contain one query per question.")
 
-        for question, search_query in zip(
-            brief.questions, self.state.search_queries
-        ):
+        for question, query in zip(brief.questions, self.state.search_queries):
+            # Python makes one MCP call; the server controls HTTP retries.
+            try:
+                candidates = fetch_candidates(query)
+            except Exception:
+                candidates = [{
+                    "status": "error",
+                    "error": "Search connection or response processing failed.",
+                }]
+
+            errors = [
+                item for item in candidates
+                if item.get("status") == "error"
+            ]
+            if errors:
+                findings.append({
+                    "question": question,
+                    "query": query,
+                    "sources": [],
+                    "unanswered": True,
+                    "gap_reason": errors[0].get("error", "Search failed."),
+                    "search_status": "search_failed",
+                })
+                continue
+
+            # Preserve original tool fields rather than model-generated URLs.
+            originals = []
+            seen_urls = set()
+            for item in candidates:
+                url = item.get("url", "")
+                if (
+                    url.startswith(("https://", "http://"))
+                    and url not in seen_urls
+                ):
+                    seen_urls.add(url)
+                    originals.append(item)
+                if len(originals) == 5:
+                    break
+
+            if not originals:
+                findings.append({
+                    "question": question,
+                    "query": query,
+                    "sources": [],
+                    "unanswered": True,
+                    "gap_reason": "Search returned no usable URL candidates.",
+                    "search_status": "ok",
+                })
+                continue
+
             researcher = build_agents()["researcher"]
             task = Task(
                 description=(
-                    f"Research question: {question}\n"
-                    f"Use search_market once with this exact query: '{search_query}'. "
-                    "Return a QuestionResearch object containing up to three distinct "
-                    "relevant source candidates from the tool result. When three or more "
-                    "relevant candidates are available, retain three rather than only one. "
-                    "Prefer direct sources, then useful adjacent context. Do not include "
-                    "irrelevant results merely to reach three. "
-                    "For competitor features and pricing, prefer official vendor product "
-                    "and pricing pages. Pricing means the software's subscription, licence, "
-                    "or service fees, not dynamic pricing of goods sold by customers. "
-                    "For channels, seek ways to reach and acquire the supplied target "
-                    "customer as a buyer of the proposed solution. "
-                    "Copy titles, URLs, and available snippets faithfully from the tool "
-                    "result; do not invent sources or claims. Classify each as "
-                    "direct, context, or irrelevant. "
                     f"Topic: {brief.topic}\n"
                     f"Geography: {brief.geography}\n"
                     f"Target customer: {brief.target_customer}\n"
-                    "Classify a source as direct only when it addresses the "
-                    "current research question for the supplied brief. "
-                    "Classify it as context when it concerns a relevant "
-                    "adjacent market, industry, or customer group. "
-                    "Classify it as irrelevant when it concerns a different "
-                    "use case or meaning of the same terminology. "
-                    "Search results are leads, not verified evidence. If search_market "
-                    "returns an error or times out, set search_status "
-                    "to search_failed, leave sources empty, set unanswered to true, "
-                    "and put the tool error in gap_reason. Do not say no sources exist. "
-                    "Set unanswered to true unless a result directly answers the question, "
-                    "and explain the gap. "
+                    f"Research question: {question}\n\n"
+                    f"Search candidates:\n{json.dumps(originals, indent=2)}\n\n"
+                    "Assess every supplied candidate. Copy its URL exactly. "
+                    "Classify it as direct, context, or irrelevant. "
+                    "Direct means relevant to this question and brief; "
+                    "context means useful adjacent information. "
+                    "Exclude terminology matches with a different meaning. "
+                    "For customer segments, assess buyers of the proposed "
+                    "solution, not those buyers' own customers. "
+                    "Pricing means fees for the proposed type of solution. "
+                    "Channels means acquiring buyers of that solution. "
+                    "Search snippets are leads, not verified findings. "
+                    "Set unanswered=true pending page verification. "
+                    "Do not invent sources or claim a search failure."
                 ),
-                expected_output="A QuestionResearch object with source candidates and gaps.",
+                expected_output=(
+                    "A QuestionResearch object classifying all supplied "
+                    "candidates and explaining remaining evidence gaps."
+                ),
                 output_pydantic=QuestionResearch,
                 agent=researcher,
             )
@@ -150,20 +191,40 @@ class GTMFlow(Flow[GTMState]):
             if result.pydantic is None:
                 raise ValueError(f"No structured research for: {question}")
 
-            finding = result.pydantic.model_dump(mode="json")
+            classified = {
+                str(source.url): source
+                for source in result.pydantic.sources
+            }
 
-            if finding["search_status"] == "search_failed":
-                if finding["sources"]:
-                    finding["gap_reason"] = (
-                        "Search was marked failed but returned candidates; "
-                        "the contradictory result requires a retry."
-                    )
-                finding["sources"] = []
-                finding["unanswered"] = True
+            sources = []
+            for original in originals:
+                assessment = classified.get(original["url"])
+                sources.append({
+                    "title": original.get("title", ""),
+                    "url": original["url"],
+                    "snippet_or_note": original.get("snippet", ""),
+                    # Unclassified candidates remain leads for the analyst.
+                    "relevance": (
+                        assessment.relevance if assessment else "context"
+                    ),
+                    "classification_status": (
+                        "classified" if assessment else "not_classified"
+                    ),
+                })
 
-            findings.append(finding)
+            findings.append({
+                "question": question,
+                "query": query,
+                "sources": sources,
+                "unanswered": True,
+                "gap_reason": result.pydantic.gap_reason,
+                "search_status": "ok",
+            })
 
-            for source in finding["sources"][:3]:
+            # Check all retained candidates, including ones the model omitted.
+            for source in sources:
+                if source["relevance"] == "irrelevant":
+                    continue
                 check = check_source(source["url"])
                 check["question"] = question
                 check["candidate_title"] = source["title"]
@@ -213,7 +274,7 @@ class GTMFlow(Flow[GTMState]):
             {
                 "url": url,
                 "page_title": checks_by_url[url].get("page_title", ""),
-                "text_excerpt": checks_by_url[url]["text_excerpt"][:1200],
+                "text_excerpt": checks_by_url[url]["text_excerpt"][:4000],
             }
             for url in retained_urls
         ]
@@ -225,9 +286,22 @@ class GTMFlow(Flow[GTMState]):
                 f"Extracted page passages:\n{json.dumps(page_excerpts, indent=2)}\n\n"
                 "Use a passage only if its text actually supports the specific question. "
                 "A search snippet or page title alone is not evidence. "
-                "Assess each research question separately and concisely. Separate direct evidence from "
-                "broader industry context. State clearly if the sources do "
+                "Assess each research question separately and concisely. "
+                "Separate direct evidence from broader industry context. "
+                "State clearly if the sources do "
                 "not establish a market size for the proposed product. "
+                "Preserve supported partial findings even when the question cannot "
+                "be fully answered. An incomplete competitor list is not an empty "
+                "finding. Treat research-note gap reasons and unanswered flags as "
+                "preliminary; assess the supplied passages yourself. "
+                "Consider all supplied passages for every question, regardless of "
+                "which search originally found the source. A vendor page found for "
+                "competitors may also support features or public pricing. "
+                "Attribute vendor statements explicitly; do not treat claimed "
+                "performance as independently validated. Distinguish adjacent "
+                "enterprise or distributor offerings from products proven suitable "
+                "for the target customer. "
+                "Include a source URL beside each supported finding. "
                 "Cite only URLs present in the research notes; do not add facts. "
                 "For any record with search_status=search_failed, report a search failure "
                 "requiring retry; do not infer that evidence is unavailable. "

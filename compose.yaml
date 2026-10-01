@@ -13,6 +13,7 @@ services:
       - .env
     environment:
       MCP_SERVER_URL: http://mcp:8000/mcp
+      N8N_CHAT_URL: ${N8N_DOCKER_CHAT_URL:-}
     volumes:
       - demo_logs:/app/logs
     depends_on:
