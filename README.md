@@ -1,6 +1,10 @@
 # Multi Agent Market Research and GTM Planner
 
-This capstone compares two implementations of a market research and go to market planning workflow: a Python CrewAI Flow with a Streamlit interface, and a local n8n workflow. The sample brief concerns an AI powered product discovery portal for consumer healthcare products in the United States, serving consumer healthcare brands and retail teams. Both implementations use a four role sequence: Head Planner, Research Agent, Market Analyst, and GTM Strategist.
+This project implements a market research and go-to-market planning workflow in two ways: a Python CrewAI Flow and an n8n workflow, both accessible through a Streamlit interface. Users supply a topic, geography, and target customer. The prompts support different industries and markets; tested examples include consumer healthcare product discovery in the United States and inventory forecasting for independent retailers in India.
+
+Both implementations use four agent roles: Head Planner, Research Agent, Market Analyst, and GTM Strategist. They share an MCP search service backed by SerpAPI. CrewAI execution tracing is integrated with Langfuse, and the Streamlit interface records run status and elapsed time for both implementations.
+
+The application currently runs locally. Public deployment is planned.
 
 The outputs are **provisional plans**. Search results are candidate leads; a successful search does not establish market size, buyer demand, competitor pricing, or regulatory conclusions. The agents label gaps and propose validation work when evidence is insufficient.
 
@@ -13,7 +17,7 @@ The outputs are **provisional plans**. Search results are candidate leads; a suc
 | Research | Research Agent calls `search_market` through MCP for eight questions | Research Agent calls the same MCP tool for eight items; Collect Research combines results |
 | Assessment | Source fetch and passage extraction in `source_check.py`, then Market Analyst | Analyst Agent and Evidence Gate |
 | Strategy | GTM Strategist | Strategy Agent and Format GTM Report |
-| Output | Streamlit result and sample `outputs/gtm_report.md` | Google Docs Create and Update nodes produce a native document in Drive |
+| Output | Streamlit result; optional local Markdown export | Google Docs Create and Update nodes produce a native document in Drive |
 
 The local MCP server in `mcp_server/server.py` exposes `search_market` using SerpAPI. CrewAI connects to `http://localhost:8000/mcp`; the n8n Docker container connects to `http://host.docker.internal:8000/mcp`. The server returns titles, URLs, and snippets, which must be checked before any claim is treated as verified.
 
@@ -22,36 +26,67 @@ The Streamlit **CrewAI** selection runs the Python Flow directly. The **n8n** se
 ## Project layout
 
 ```text
-app.py                    Streamlit interface
-src/gtm_agents/           CrewAI agents, Flow, models, planner, source checks
-mcp_server/server.py      Streamable HTTP MCP search tool
-tests/                    Connectivity, timing, research, and export scripts
-outputs/gtm_report.md     Saved CrewAI sample output
-pyproject.toml            UV project dependencies
-uv.lock                   Locked dependency resolution
-.env.example              Required secret names, without values
+app.py                              Streamlit interface
+src/gtm_agents/                     Agents, Flow, models, source checks, logging, tracing
+mcp_server/server.py                Streamable HTTP MCP search tool
+n8n/gtm_research_workflow.json      Main n8n workflow export
+n8n/gtm_mcp_connection_test.json    MCP connection-test workflow
+tests/                              Connectivity, timing, research, and export scripts
+pyproject.toml                      uv project dependencies
+uv.lock                             Locked dependency resolution
+.env.example                        Configuration template with placeholder values
 ```
 
-The submission also contains the separately exported n8n workflow JSON, a populated Google Doc sample, and screenshots. The n8n JSON references credentials by name or ID; an importer must configure their own OpenAI and Google Docs credentials.
+Generated reports and logs are stored locally and excluded from Git. The n8n exports reference credentials by name or ID; importers must configure their own OpenAI and Google Docs credentials and check the MCP endpoint for their environment. Submission reports and screenshots were packaged separately and are not included in this repository.
 
 ## Setup in WSL Ubuntu
 
-1. Install Python 3.12 and `uv`. From the project root, run `uv sync` to install locked dependencies.
-2. Copy `.env.example` to `.env` and fill in `OPENAI_API_KEY` and `SERPAPI_API_KEY`. Keep `.env` private. The CrewAI model defaults to `openai/gpt-4o-mini`; set `OPENAI_MODEL_NAME` in `.env` if changing it.
-3. Start the MCP server in one terminal:
+Install `uv` and a Python version compatible with `pyproject.toml`. From the project root, install the locked dependencies:
 
-   ```bash
-   uv run python mcp_server/server.py
-   ```
+```bash
+uv sync --locked
+test -e .env || cp .env.example .env
+```
 
-4. In a second terminal, check the MCP tool and start the UI:
+If `.env` already exists, keep it rather than overwriting it.
 
-   ```bash
-   uv run python tests/check_mcp.py
-   uv run streamlit run app.py
-   ```
+Fill in `OPENAI_API_KEY` and `SERPAPI_API_KEY` in `.env`. The CrewAI model defaults to `openai/gpt-4o-mini`; optionally set `OPENAI_MODEL_NAME` to change it.
 
-5. Open the local Streamlit URL shown in the terminal. Select **CrewAI**, enter a topic, geography, and target customer, then select **Create GTM plan**. The eight research calls and agent stages can take several minutes.
+### Langfuse configuration
+
+The current CrewAI UI integration initializes Langfuse tracing. Create a Langfuse project and add its credentials to `.env`:
+
+```dotenv
+LANGFUSE_PUBLIC_KEY=your_langfuse_public_key
+LANGFUSE_SECRET_KEY=your_langfuse_secret_key
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+```
+
+Use the base URL for your project's region. Keep `.env` private; commit only the placeholder template `.env.example`.
+
+### Start the application
+
+In one terminal, start the MCP search server:
+
+```bash
+uv run python mcp_server/server.py
+```
+
+In a second terminal, check connectivity:
+
+```bash
+uv run python tests/check_mcp.py
+```
+
+Then start Streamlit:
+
+```bash
+uv run streamlit run app.py
+```
+
+Open the local URL shown in the terminal. Select **CrewAI**, enter a topic, geography, and target customer, then select **Create GTM plan**. Keep the MCP server running throughout execution.
+
+After a run, inspect **Tracing** in Langfuse for `crewai-gtm-run`. Its metadata includes the same `run_id` recorded in `logs/runs.jsonl`. Child observations capture agent operations, MCP tool calls, and OpenAI model calls. Instrumented prompt and response content is configured to be redacted.
 
 ## n8n setup and optional Streamlit connection
 
@@ -68,27 +103,63 @@ Target customer: Consumer healthcare brands and retail teams
 To call this workflow from the Streamlit **n8n** selection, enable **Make Chat Publicly Available** on the n8n Chat Trigger, use its **Chat URL** (not the editor URL), save and publish the workflow, and add the URL to the local `.env` file:
 
 ```dotenv
-N8N_CHAT_URL=http://localhost:5678/webhook/<your-chat-trigger-id>/chat
+N8N_CHAT_URL=http://localhost:5678/webhook/your-chat-trigger-id/chat
 ```
 
 Copy the actual Chat URL from the node instead of typing an ID. The URL must be reachable from the WSL process running Streamlit. For a local demo, keep n8n bound to your machine. If you configure Basic Auth on the Chat Trigger, also put `N8N_CHAT_USERNAME` and `N8N_CHAT_PASSWORD` in `.env`. Restart Streamlit after changing `.env`.
 
-Select **n8n** in Streamlit and submit the same brief. The app sends `action=sendMessage`, a new session ID, and the brief as `chatInput`. It waits up to ten minutes for the workflow to create and populate a Google Doc, then shows its link. One submission starts one new workflow execution and one new document. If the UI times out, inspect n8n **Executions** and Drive before trying again so you do not create duplicates.
+Select **n8n** in Streamlit and submit the same brief. The app sends `action=sendMessage`, a new session ID, and the brief as `chatInput`. The app uses a 20-minute HTTP timeout while waiting for n8n to create and populate a Google Doc, then displays the returned document link. This timeout applies to the UI request; it does not cancel the n8n execution. One submission starts a new workflow execution and normally creates one new document. If the UI times out, inspect n8n **Executions** and Google Drive before retrying to avoid duplicate runs.
 
 ## Testing and observed results
 
-Useful local checks from the project root:
+Run connectivity and search checks from the project root:
 
 ```bash
 uv run python tests/check_serpapi.py
 uv run python tests/time_serpapi.py
 uv run python tests/check_mcp.py
+```
+
+These checks contact external services and may consume search quota.
+
+For a full CrewAI research run:
+
+```bash
 uv run python tests/run_eight_questions.py
 ```
 
-`tests/run_eight_questions.py` writes `eight_question_run.json` in the project root and makes paid model and SerpAPI calls. `tests/export_report.py` generates the saved Markdown report from a separate `eight_question_assessment.json` intermediate; that intermediate is not part of the minimal source archive. The supplied `outputs/gtm_report.md` is the sample artifact, so the export script is not a prerequisite for running the UI.
+This script makes billable model calls, consumes search quota, and writes `eight_question_run.json` locally. Generated research files, logs, and the `outputs/` directory are excluded from Git.
 
-The saved CrewAI sample reports eight planned and searched questions, eight successful searches, and five candidate pages with readable passages. These counts describe search coverage and page access, not eight answered questions. A local n8n end to end test completed without errors in about five minutes and produced a populated Google Doc. Runtime and search outcomes will vary with network response, provider availability, and model output. The Streamlit to n8n HTTP integration is an optional extension; validate it locally before using its screenshot as evidence.
+`tests/export_report.py` requires a separately generated `eight_question_assessment.json` intermediate. It is not required to run the Streamlit interface.
+
+### Recorded runs
+
+The following are individual observations, not controlled benchmarks or averages.
+
+| Implementation | Test | Recorded duration | Result |
+| --- | --- | --- | --- |
+| CrewAI through Streamlit | India inventory forecasting; local run log | 2 min 24.8 sec | Completed |
+| CrewAI through Streamlit | India inventory forecasting; Langfuse trace | 2 min 29.7 sec | Trace and child observations captured |
+| n8n editor chat | India inventory forecasting; generic prompts | 4 min 28 sec | Google Doc created; Q2 and Q6 search timeouts disclosed |
+
+The n8n run completed despite two failed searches. Successful workflow completion does not mean all research questions were answered.
+
+### Observability and cost
+
+The recorded Langfuse run contained one parent trace and 54 child observations, including 19 model calls and eight MCP search calls.
+
+| Metric | Recorded value |
+| --- | ---: |
+| Input tokens | 17,048 |
+| Output tokens | 2,535 |
+| Total tokens | 19,583 |
+| Langfuse-calculated LLM cost | USD 0.00408 |
+
+The cost covers captured OpenAI model calls only. It excludes SerpAPI, hosting, and other operating costs, and is not an invoice reconciliation. Comparable n8n token and cost measurements have not yet been collected.
+
+The Streamlit interface records run IDs, implementation, status, elapsed seconds, and error type in `logs/runs.jsonl`. CrewAI traces include the matching run ID. The n8n UI timing measures the HTTP response wait; detailed n8n tracing is not yet integrated.
+
+Model, evidence depth, network conditions, and provider response times differ between implementations. These runs therefore do not establish that one framework is inherently faster, cheaper, or more reliable.
 
 ## Limits and interpretation
 
@@ -98,6 +169,17 @@ The saved CrewAI sample reports eight planned and searched questions, eight succ
 - The n8n workflow produces a Google Doc with plain text. The CrewAI Markdown output and n8n Google Doc are distinct artifacts from separate runs; they are not expected to have identical wording.
 - Google OAuth test mode may require reconnecting after the test-user authorization expires. Secrets, `.env`, `.venv`, logs with sensitive data, and local credentials are excluded from the submission.
 
-## Submission evidence
+## Deployment status and roadmap
 
-Include the final n8n JSON export; the CrewAI UV project files; the populated Google Doc sample or its DOCX export; CrewAI Streamlit screenshots showing the brief, agent result, and evidence gaps; and this README. Add a screenshot of the successful n8n execution and the populated Google Doc if useful. If the optional Streamlit n8n call passes, capture that UI result as an additional screenshot and note that it triggers a fresh n8n execution.
+The project currently runs locally in WSL Ubuntu, with n8n running in Docker. No public application deployment is available yet.
+
+Planned work before sharing a hosted demo:
+
+- Add access controls and usage limits to manage billable executions.
+- Configure hosted secrets and service endpoints.
+- Package the Streamlit app and MCP service for Azure deployment.
+- Protect the n8n editor and workflow endpoint.
+- Verify report generation and tracing in the hosted environment.
+- Add detailed n8n observability and collect comparable token and cost measurements.
+
+The repository currently has no license. A license decision is pending before public release.
