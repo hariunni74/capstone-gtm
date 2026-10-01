@@ -1,0 +1,23 @@
+[project]
+name = "capstone-gtm"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "crewai>=1.15.22",
+    "httpx>=0.28.1",
+    "langfuse>=4.15.6",
+    "mcp[cli]>=1,<2",
+    "openinference-instrumentation-crewai>=1.1.18",
+    "openinference-instrumentation-openai>=0.1.61",
+    "python-dotenv>=1.2.3",
+    "streamlit>=1.64.0",
+]
+
+[project.scripts]
+capstone-gtm = "capstone_gtm:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"

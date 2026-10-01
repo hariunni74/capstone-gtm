@@ -1,0 +1,29 @@
+# Python-generated files
+.env
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+outputs/
+logs/
+*.egg-info
+
+# Virtual environments
+.venv
+.venv/
+
+# Local credentials; retain the shareable template
+.env.*
+!.env.example
+
+# Execution logs and generated research results
+*.log
+eight_question_*.json
+crewai_file_list.txt
+
+# Local backup copy
+app-copy.py
+
+# Windows download metadata
+*:Zone.Identifier
