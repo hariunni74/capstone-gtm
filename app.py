@@ -16,6 +16,7 @@ from gtm_agents.planner import build_brief
 from gtm_agents.flow import GTMFlow
 from gtm_agents.run_logging import log_run
 from gtm_agents.observability import setup_observability
+from gtm_agents.usage_limits import reserve_run
 
 load_dotenv()
 
@@ -64,11 +65,35 @@ with st.form("research_brief"):
     implementation = st.selectbox("Run with", ["CrewAI", "n8n"])
     submitted = st.form_submit_button("Create GTM plan", type="primary")
 
+# Reserve an allowance before starting either implementation.
+if submitted and topic.strip() and geography.strip() and audience.strip():
+    # Missing n8n configuration should not consume an attempt.
+    if implementation == "n8n" and not os.getenv("N8N_CHAT_URL", "").strip():
+        st.error("Configure N8N_CHAT_URL before running n8n.")
+        st.stop()
+
+    run_id = str(uuid.uuid4())
+
+    try:
+        daily_limit = int(os.getenv("DEMO_DAILY_RUN_LIMIT", "5"))
+        allowed = reserve_run(run_id, daily_limit)
+    except (ValueError, OSError, RuntimeError) as exc:
+        st.error("Could not check the demo allowance. Contact the app owner.")
+        st.stop()
+    except Exception:
+        # Block execution if the usage database is unavailable.
+        st.error("Could not check the demo allowance. Contact the app owner.")
+        st.stop()
+
+    if not allowed:
+        st.warning("The demo's daily run allowance has been reached.")
+        st.stop()
+
+
 if submitted:
     if not topic.strip() or not geography.strip() or not audience.strip():
         st.error("Fill in the topic, geography, and target customer.")
     elif implementation == "CrewAI":
-        run_id = str(uuid.uuid4())
         try:
             # Measure elapsed time across the complete CrewAI workflow.
             started_at = time.perf_counter()
@@ -139,7 +164,6 @@ if submitted:
             username = os.getenv("N8N_CHAT_USERNAME", "")
             password = os.getenv("N8N_CHAT_PASSWORD", "")
             auth = (username, password) if username and password else None
-            run_id = str(uuid.uuid4())
             try:
                 # Measure the time the UI waits for the n8n response.
                 started_at = time.perf_counter()

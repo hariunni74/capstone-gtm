@@ -183,3 +183,9 @@ Planned work before sharing a hosted demo:
 - Add detailed n8n observability and collect comparable token and cost measurements.
 
 The repository currently has no license. A license decision is pending before public release.
+
+### Demo access and usage controls
+
+The Streamlit app requires `DEMO_ACCESS_CODE` before displaying the research form. `DEMO_DAILY_RUN_LIMIT` defaults to five research attempts per UTC day, shared across users and both implementations. Failed attempts also count.
+
+The counter is stored in `logs/usage.sqlite3` and survives app restarts. Hosted deployment requires persistent storage shared by all app instances. These controls apply to Streamlit submissions; direct access to the n8n endpoint must be protected separately.
