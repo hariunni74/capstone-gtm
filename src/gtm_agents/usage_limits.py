@@ -55,3 +55,28 @@ def reserve_run(run_id: str, daily_limit: int) -> bool:
         return True
     finally:
         connection.close()
+
+def remaining_runs(daily_limit: int) -> int:
+    """Return today's shared allowance without reserving an attempt."""
+    if daily_limit < 1:
+        raise ValueError("Daily run limit must be at least 1.")
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    connection = sqlite3.connect(DB_FILE, timeout=10)
+    try:
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS run_attempts (
+                run_id TEXT PRIMARY KEY,
+                day TEXT NOT NULL
+            )
+        """)
+        count = connection.execute(
+            "SELECT COUNT(*) FROM run_attempts WHERE day = ?",
+            (today,),
+        ).fetchone()[0]
+
+        return max(0, daily_limit - count)
+    finally:
+        connection.close()

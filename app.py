@@ -16,7 +16,7 @@ from gtm_agents.planner import build_brief
 from gtm_agents.flow import GTMFlow
 from gtm_agents.run_logging import log_run
 from gtm_agents.observability import setup_observability
-from gtm_agents.usage_limits import reserve_run
+from gtm_agents.usage_limits import reserve_run, remaining_runs
 from gtm_agents.report_export import build_word_report
 from gtm_agents.input_safety import (
     SafetyCheckUnavailable,
@@ -74,9 +74,8 @@ st.info(
 )
 
 st.caption(
-    "Supported use: legitimate business and market research. "
-    "Pornography, sexual-service offerings, and malicious activities "
-    "are outside this demo's scope."
+    "Explore a genuine business idea, research a market, and build "
+    "a provisional go-to-market plan."
 )
 
 # Require a configured access code before allowing billable submissions.
@@ -103,6 +102,27 @@ if not hmac.compare_digest(
     st.error("Incorrect access code.")
     st.stop()
 
+# Show the shared allowance before visitors submit a brief.
+try:
+    daily_limit = int(os.getenv("DEMO_DAILY_RUN_LIMIT", "5"))
+    attempts_remaining = remaining_runs(daily_limit)
+except Exception:
+    st.error("Could not check demo availability. Please try again later.")
+    st.stop()
+
+allowance_notice = st.empty()
+allowance_notice.info(
+    f"Demo availability: {attempts_remaining} of {daily_limit} "
+    "research attempts remaining today."
+)
+st.caption(
+    "Shared across all visitors. Resets daily at 00:00 UTC "
+    "(5:30 AM India time). Failed research attempts also count."
+)
+
+if attempts_remaining == 0:
+    st.warning("Today's demo allowance is exhausted. Please return after the reset.")
+
 # Collect the same brief fields for either implementation.
 with st.form("research_brief"):
     topic = st.text_area(
@@ -117,7 +137,11 @@ with st.form("research_brief"):
         placeholder="Example: Consumer healthcare brands and retail product teams",
     )
     implementation = st.selectbox("Run with", ["CrewAI", "n8n"])
-    submitted = st.form_submit_button("Create GTM plan", type="primary")
+    submitted = st.form_submit_button(
+        "Create GTM plan",
+        type="primary",
+        disabled=attempts_remaining == 0,
+    )
 
 # Validate both workflows' inputs before reserving a demo attempt.
 if submitted:
@@ -258,7 +282,11 @@ if submitted and topic.strip() and geography.strip() and audience.strip():
     if not allowed:
         st.warning("The demo's daily run allowance has been reached.")
         st.stop()
-
+    # Refresh the indicator after this submission reserves an attempt.
+    allowance_notice.info(
+        f"Demo availability: {remaining_runs(daily_limit)} of {daily_limit} "
+        "research attempts remaining today."
+    )
 
 if submitted:
     if not topic.strip() or not geography.strip() or not audience.strip():
