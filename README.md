@@ -433,6 +433,8 @@ count. The counter is stored in `logs/usage.sqlite3` on a persistent volume.
 
 The UI displays the remaining research attempts shared across all visitors and disables submission when the allowance is exhausted. The allowance resets at midnight UTC (5:30 AM IST). Availability refreshes when the page reruns; the database reservation enforces the limit during simultaneous submissions.
 
+The submit button is disabled while a browser session processes a brief. It becomes available again after completion, failure, or rejection, subject to the daily allowance. Completed reports remain available across page reruns within that session.
+
 The access code is a shared demo gate, not individual user authentication.
 These submission controls apply to the Streamlit entry point. Direct
 editor executions bypass them; the n8n editor and endpoint remain private
