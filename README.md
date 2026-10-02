@@ -337,8 +337,16 @@ Before research starts, Streamlit:
 1. Checks the demo access code.
 2. Validates required fields, length limits, and unsupported control characters.
 3. Screens the complete brief using OpenAI moderation.
-4. Reserves an attempt from the shared daily allowance.
-5. Starts the selected workflow.
+4. Checks whether the product, geography, and customer fields are understandable.
+5. Reserves an attempt from the shared daily allowance.
+6. Starts the selected workflow.
+
+The brief-quality check uses a small model call to identify unclear or
+meaningless inputs and provide field-specific correction messages.
+Rejected briefs and unavailable checks do not start research or consume
+a research attempt. The quality-check call itself incurs model usage.
+It assesses clarity, not market viability or factual accuracy, and can
+make classification mistakes.
 
 Flagged briefs are blocked. If moderation is unavailable or returns an
 invalid response, research is also blocked. These cases do not reserve

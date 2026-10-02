@@ -22,6 +22,10 @@ from gtm_agents.input_safety import (
     SafetyCheckUnavailable,
     check_brief_safety,
 )
+from gtm_agents.brief_quality import (
+    BriefCheckUnavailable,
+    check_brief_quality,
+)
 
 load_dotenv()
 
@@ -161,6 +165,47 @@ if submitted:
             "No research was started and no demo attempt was used. "
             "If your request is legitimate business research, contact "
             "the app owner for review."
+        )
+        st.stop()
+
+# Require an understandable brief before consuming a research attempt.
+if submitted:
+    try:
+        with st.spinner("Checking that your brief is clear..."):
+            decision = check_brief_quality(topic, geography, audience)
+    except BriefCheckUnavailable:
+        st.error(
+            "We couldn't check the brief right now. "
+            "No research was started and no demo attempt was used. "
+            "Please try again later."
+        )
+        st.stop()
+
+    corrections = []
+    if not decision.topic_clear:
+        corrections.append(
+            "Product or market: describe what you want to research. "
+            "Example: AI-powered inventory forecasting software."
+        )
+    if not decision.geography_clear:
+        corrections.append(
+            "Target geography: enter a recognizable location or region. "
+            "Examples: India, United States, Europe, or Global."
+        )
+    if not decision.customer_clear:
+        corrections.append(
+            "Target customer: describe who would buy or use the solution. "
+            "Example: independent retailers and inventory managers."
+        )
+
+    if corrections:
+        st.warning("Please clarify your brief before starting research.")
+        for correction in corrections:
+            st.error(correction)
+        st.caption(
+            "No research was started and no demo attempt was used. "
+            "Automated checks can make mistakes; contact the app owner "
+            "if a clear business brief keeps being rejected."
         )
         st.stop()
 
