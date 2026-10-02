@@ -1,0 +1,484 @@
+{
+  "name": "GTM Planner – Multi-Agent Workflow - Azure Demo",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "mode": "webhook",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        -128,
+        16
+      ],
+      "id": "ad17ea97-116b-4d3c-92af-9da8e6314692",
+      "name": "When chat message received",
+      "webhookId": "58669582-35ef-4a9c-8165-887eb88637e0"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        208
+      ],
+      "id": "908e6db5-2fbb-4ebf-bca3-22d9f5c06120",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "Erhdx9vytTn2n8Yz",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://mcp:8000/mcp",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.4,
+      "position": [
+        656,
+        240
+      ],
+      "id": "a1f5d30d-75bb-47cf-b0f6-bf1c9d7aa209",
+      "name": "MCP Client"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are the Head Planner for a market research and go-to-market planning workflow.\n\nRead the user's brief and create a research plan for three specialists: Research Agent, Analyst Agent, and Strategy Agent. Do not claim to have researched anything or invent sources.\n\nExtract the topic, geography, and target customer. If a field is missing, use \"unspecified\" and identify it as an assumption. Produce exactly eight concise research questions covering market size and direction, customer segments, customer problems, competitors, differentiation, competitor pricing, channels, and regulatory or adoption constraints.\n\nReturn valid JSON only, with this structure:\n{\n  \"topic\": \"...\",\n  \"geography\": \"...\",\n  \"target_customer\": \"...\",\n  \"assumptions\": [],\n  \"research_questions\": [\n    {\"id\": \"Q1\", \"question\": \"...\", \"category\": \"...\"}\n  ]\n}",
+          "maxIterations": 3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        48,
+        16
+      ],
+      "id": "7af15b5e-0091-4a2c-90b4-47cadce70817",
+      "name": "Head Planner"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "You are the Research Agent. The upstream node splits the research plan into eight separate items. Each invocation receives one item containing a single question and the brief as JSON. Research only the question_id and question in the current item.\n\nCall the search_market MCP tool exactly once with one focused search query of at most 8 words. Do not retry. Interpret terminology using the supplied topic, geography, target_customer, and current question. Search for evidence relevant to that brief. Exclude results that use similar words for a different industry or use case. When an exact market estimate is unavailable, seek a measurable adjacent market and clearly identify the relevance limitation in evidence_gap.\n\nIf search_market returns an error or timeout, do not call it again. Return the required JSON with search_status: \"error\", an empty sources array, and the error in evidence_gap.\n\nReturn valid JSON only:\n{\n  \"question_id\": \"...\",\n  \"question\": \"...\",\n  \"search_status\": \"ok or error\",\n  \"query\": \"...\",\n  \"sources\": [\n    {\"title\": \"...\", \"url\": \"...\"}\n  ],\n  \"evidence_gap\": \"...\"\n}\n\nUse only relevant titles and URLs actually returned by the tool. URLs must be plain absolute https:// URLs, never Markdown links. A successful search does not mean the question was answered. Do not invent findings or numbers; state what remains unanswered in evidence_gap.\n\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        512,
+        16
+      ],
+      "id": "f45d2953-7fbe-4e36-99a6-897b81f7c04a",
+      "name": "Research Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        496,
+        208
+      ],
+      "id": "271fba12-2c17-473b-951f-a984a259e254",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "Erhdx9vytTn2n8Yz",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan = JSON.parse($input.first().json.output);\n\nreturn plan.research_questions.map(q => ({\n  json: {\n    topic: plan.topic,\n    geography: plan.geography,\n    target_customer: plan.target_customer,\n    question_id: q.id,\n    question: q.question,\n    category: q.category\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        16
+      ],
+      "id": "1a2205b8-b25c-4f31-a2ec-831c61f42d9c",
+      "name": "Split Research Questions"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.all().map((item, index) => {\n  let value = item.json.output ?? item.json;\n\n  if (typeof value !== 'string') return value;\n\n  const raw = value.trim()\n    .replace(/^```(?:json)?\\s*/i, '')\n    .replace(/\\s*```$/, '');\n\n  try {\n    return JSON.parse(raw);\n  } catch (error) {\n    return {\n      question_id: `Q${index + 1}`,\n      question: \"\",\n      search_status: \"error\",\n      query: \"\",\n      sources: [],\n      evidence_gap: `Research Agent returned malformed JSON. ${error.message}. This question needs another research run.`\n    };\n  }\n});\n\nreturn [{\n  json: {\n    research_results: results,\n    question_count: results.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        16
+      ],
+      "id": "1a8601b3-e75e-40af-9819-f3f0e4a06155",
+      "name": "Collect Research"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=={{ JSON.stringify({\n  brief: {\n    topic: $('Split Research Questions').first().json.topic,\n    geography: $('Split Research Questions').first().json.geography,\n    target_customer: $('Split Research Questions').first().json.target_customer\n  },\n  research_results: $json.research_results,\n  question_count: $json.question_count\n}) }}",
+        "options": {
+          "systemMessage": "You are the Analyst Agent for a market research and GTM planning workflow. The input contains the user's brief and eight research results with search-result titles, URLs, and evidence gaps. Use the supplied topic, geography, and target customer to assess relevance.\n\nAssess each question separately. Search-result titles and URLs are leads, not verified page evidence. Do not claim to have read a page or verified its contents. Reject results that concern a different industry, geography, buyer, or meaning of the terminology. Retain useful adjacent-market leads only when their limitations are explicit. Do not infer market sizes, prices, customer rankings, legal requirements, or competitor capabilities from titles.\n\nReturn valid JSON only:\n{\n  \"question_count\": 8,\n  \"assessments\": [\n    {\n      \"question_id\": \"Q1\",\n      \"answer_status\": \"unanswered or partial\",\n      \"relevant_leads\": [\n        {\"title\": \"...\", \"url\": \"...\", \"relevance\": \"direct or adjacent\"}\n      ],\n      \"excluded_leads\": [\n        {\"title\": \"...\", \"reason\": \"...\"}\n      ],\n      \"supported_finding\": \"None verified from search-result metadata alone.\",\n      \"evidence_gap\": \"...\",\n      \"next_verification\": \"...\"\n    }\n  ],\n  \"overall_limitations\": \"...\"\n}\n\nProduce one assessment for every Q1–Q8. Keep only URLs from the input. Use \"partial\" only when the available input genuinely supports part of an answer; otherwise use \"unanswered\". Be concise."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        960,
+        16
+      ],
+      "id": "b1507fb6-a91f-4ccd-bf1a-2b0b674bff98",
+      "name": "Analyst Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1024,
+        240
+      ],
+      "id": "2fc61be2-cdf4-4211-874b-3669b8aeb0e5",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "Erhdx9vytTn2n8Yz",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.output;\nconst analysis = typeof raw === 'string' ? JSON.parse(raw) : raw;\n\nanalysis.assessments = analysis.assessments.map(a => ({\n  ...a,\n  answer_status: 'unanswered',\n  supported_finding: 'No page content was verified in this run.',\n  evidence_gap: a.evidence_gap\n}));\n\nanalysis.evidence_policy =\n  'Search-result titles and URLs are leads only. No factual market, competitor, pricing, channel-effectiveness, or regulatory claim is verified in this run. Strategy must label proposed actions as hypotheses for validation.';\n\nreturn [{ json: analysis }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        16
+      ],
+      "id": "e27d232a-a6fa-4447-b096-ecaf2641af34",
+      "name": "Evidence Gate"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify({\n  brief: {\n    topic: $('Split Research Questions').first().json.topic,\n    geography: $('Split Research Questions').first().json.geography,\n    target_customer: $('Split Research Questions').first().json.target_customer\n  },\n  analysis: $json\n}) }}",
+        "options": {
+          "systemMessage": "You are the GTM Strategy Agent. Draft a provisional go-to-market plan from the brief and Analyst assessments.\n\nThe evidence policy is binding. This run contains search-result leads but no verified page content. Do not present market sizes, competitor names or capabilities, pricing, customer preferences, regulatory obligations, or channel performance as established facts. Do not cite a lead as proof. Label every proposed segment, value proposition, feature, channel, and commercial model as a hypothesis to validate.\n\nReturn valid JSON only with these fields:\n{\n  \"title\": \"...\",\n  \"status\": \"Provisional strategy requiring validation\",\n  \"executive_summary\": \"...\",\n  \"icp_hypotheses\": [\n    {\"segment\": \"...\", \"why_test\": \"...\", \"validation_method\": \"...\"}\n  ],\n  \"value_proposition_hypothesis\": \"...\",\n  \"messaging_hypotheses\": [\"...\"],\n  \"competitor_matrix\": [\n    {\"category\": \"...\", \"known_evidence\": \"Not verified\", \"verification_needed\": \"...\"}\n  ],\n  \"pricing_hypotheses\": [\"...\"],\n  \"channel_hypotheses\": [\n    {\"channel\": \"...\", \"test\": \"...\", \"success_metric\": \"...\"}\n  ],\n  \"swot_hypotheses\": {\n    \"strengths\": [\"...\"], \"weaknesses\": [\"...\"],\n    \"opportunities\": [\"...\"], \"threats\": [\"...\"]\n  },\n  \"launch_plan\": [\n    {\"phase\": \"...\", \"action\": \"...\", \"exit_criterion\": \"...\"}\n  ],\n  \"evidence_gaps\": [\"...\"],\n  \"source_leads_for_verification\": [\n    {\"question_id\": \"...\", \"title\": \"...\", \"url\": \"...\"}\n  ]\n}\n\nKeep the plan concise and actionable. Source leads must be copied exactly from the input and clearly presented for verification, not as supporting citations. Do not invent numeric targets or legal conclusions.\n\nFor source_leads_for_verification, use ONLY entries in each assessment's relevant_leads. Never include excluded_leads. Include at most two relevant leads per question and omit weakly related leads when they would not help verify the question.\n\nAny numbers you propose for interviews, pilots, timelines, channel tests, or exit criteria are illustrative planning targets, not researched benchmarks. State this explicitly in executive_summary and label numeric targets accordingly in the relevant fields."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1424,
+        16
+      ],
+      "id": "7aa241c3-6c04-4cea-9599-62474081df45",
+      "name": "Strategy Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1344,
+        224
+      ],
+      "id": "30a2abdd-d687-402a-99c0-88e6960ab24b",
+      "name": "OpenAI Chat Model3",
+      "credentials": {
+        "openAiApi": {
+          "id": "Erhdx9vytTn2n8Yz",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.output;\nconst s = typeof raw === 'string' ? JSON.parse(raw) : raw;\nconst lines = [];\n\nconst section = (heading) => {\n  lines.push('', heading.toUpperCase(), '');\n};\nconst bullets = (items) => {\n  for (const item of items || []) lines.push(`• ${item}`);\n};\n\nlines.push(s.title, s.status, '');\nlines.push('Research note: This run used search-result leads only. No page content was verified. All proposed actions and numeric targets are hypotheses for validation.');\n\nsection('Executive summary');\nlines.push(s.executive_summary);\n\nsection('Ideal customer profile hypotheses');\nfor (const x of s.icp_hypotheses || []) {\n  lines.push(`• ${x.segment}`);\n  lines.push(`  Why test: ${x.why_test}`);\n  lines.push(`  Validation: ${x.validation_method}`);\n}\n\nsection('Value proposition hypothesis');\nlines.push(s.value_proposition_hypothesis);\n\nsection('Messaging hypotheses');\nbullets(s.messaging_hypotheses);\n\nsection('Competitor categories');\nfor (const x of s.competitor_matrix || []) {\n  lines.push(`• ${x.category} — ${x.known_evidence}`);\n  lines.push(`  Verify: ${x.verification_needed}`);\n}\n\nsection('Pricing hypotheses');\nbullets(s.pricing_hypotheses);\n\nsection('Channel hypotheses');\nfor (const x of s.channel_hypotheses || []) {\n  lines.push(`• ${x.channel}`);\n  lines.push(`  Test: ${x.test}`);\n  lines.push(`  Measure: ${x.success_metric}`);\n}\n\nsection('SWOT hypotheses');\nfor (const [name, items] of Object.entries(s.swot_hypotheses || {})) {\n  lines.push(name.toUpperCase());\n  bullets(items);\n}\n\nsection('Launch plan');\nfor (const x of s.launch_plan || []) {\n  lines.push(`• ${x.phase}`);\n  lines.push(`  Action: ${x.action}`);\n  lines.push(`  Exit criterion: ${x.exit_criterion}`);\n}\n\nsection('Evidence gaps');\nbullets(s.evidence_gaps);\n\nsection('Research leads requiring verification');\nfor (const x of s.source_leads_for_verification || []) {\n  lines.push(`• ${x.question_id}: ${x.title}`);\n  lines.push(`  ${x.url}`);\n}\n\nreturn [{\n  json: {\n    document_title: s.title,\n    document_text: lines.join('\\n')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1712,
+        16
+      ],
+      "id": "682ab2bb-4875-48aa-adf5-4e468433b09e",
+      "name": "Format GTM Report"
+    },
+    {
+      "parameters": {
+        "driveId": "=  myDrive",
+        "folderId": "=",
+        "title": "={{ $json.document_title }}"
+      },
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        16
+      ],
+      "id": "9bfbb001-61bd-413f-b1de-bc9656788dea",
+      "name": "Create GTM Google Doc",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "kCTA54cyIwtSO5RL",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentURL": "={{ $json.id }}",
+        "actionsUi": {
+          "actionFields": [
+            {
+              "action": "insert",
+              "text": "={{ $('Format GTM Report').first().json.document_text }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        2112,
+        16
+      ],
+      "id": "055aa403-b308-4ecb-b42b-62da9d44fa79",
+      "name": "Write GTM Report",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "kCTA54cyIwtSO5RL",
+          "name": "Google Docs account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Head Planner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Head Planner",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Head Planner": {
+      "main": [
+        [
+          {
+            "node": "Split Research Questions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Research Questions": {
+      "main": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Agent": {
+      "main": [
+        [
+          {
+            "node": "Collect Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Research": {
+      "main": [
+        [
+          {
+            "node": "Analyst Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Analyst Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyst Agent": {
+      "main": [
+        [
+          {
+            "node": "Evidence Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evidence Gate": {
+      "main": [
+        [
+          {
+            "node": "Strategy Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Strategy Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strategy Agent": {
+      "main": [
+        [
+          {
+            "node": "Format GTM Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format GTM Report": {
+      "main": [
+        [
+          {
+            "node": "Create GTM Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create GTM Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Write GTM Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "529da8a4-bf98-4918-9bdb-4df30aa2fb5d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f678733e2a692678dbfce5b9abab269cfa8d7a524f831a4ca749b1204c948496"
+  },
+  "nodeGroups": [],
+  "id": "qiOvS810Bs5QKRCd",
+  "tags": []
+}
