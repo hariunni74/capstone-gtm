@@ -80,13 +80,13 @@ if not expected_code:
     st.stop()
 
 entered_code = st.text_input(
-    "Enter the Demo access code to proceed:",
+    "Demo access code:",
     type="password",
     key="demo_access_code",
 )
 
 if not entered_code:
-    st.info("Enter the access code provided by the app owner, then press Enter.")
+    st.info("Enter the access code provided by the app owner, then press Enter to proceed.")
     st.stop()
 
 if not hmac.compare_digest(
