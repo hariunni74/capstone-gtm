@@ -60,7 +60,13 @@ test -e .env || cp .env.example .env
 
 If `.env` already exists, keep it rather than overwriting it.
 
-Fill in `OPENAI_API_KEY` and `SERPAPI_API_KEY` in `.env`. The CrewAI model defaults to `openai/gpt-4o-mini`; optionally set `OPENAI_MODEL_NAME` to change it.
+Fill in `OPENAI_API_KEY`, `SERPAPI_API_KEY`, and `DEMO_ACCESS_CODE`
+in `.env`. Optionally set `DEMO_DAILY_RUN_LIMIT`; its default is five
+attempts per UTC day across all visitors and both workflows.
+
+The CrewAI model defaults to `openai/gpt-4o-mini`; optionally set
+`OPENAI_MODEL_NAME` to change it. `MCP_SERVER_URL` defaults to
+`http://localhost:8000/mcp` for local Python execution.
 
 ### Langfuse configuration
 
@@ -94,9 +100,17 @@ Then start Streamlit:
 uv run streamlit run app.py
 ```
 
-Open the local URL shown in the terminal. Select **CrewAI**, enter a topic, geography, and target customer, then select **Create GTM plan**. Keep the MCP server running throughout execution.
+Open the local URL shown in the terminal and enter your demo access code.
+Select CrewAI, enter a topic, geography, and target customer, then select
+Create GTM plan. Keep the MCP server running throughout execution.
+The brief is screened before research begins.
 
-After a run, inspect **Tracing** in Langfuse for `crewai-gtm-run`. Its metadata includes the same `run_id` recorded in `logs/runs.jsonl`. Child observations capture agent operations, MCP tool calls, and OpenAI model calls. Instrumented prompt and response content is configured to be redacted.
+After a CrewAI run, inspect Tracing in Langfuse for `crewai-gtm-run`.
+Its metadata includes the `run_id` recorded in `logs/runs.jsonl`.
+Instrumentation captures CrewAI and OpenAI operations. The Python MCP
+client performs search retrieval separately; do not assume every search
+is represented by an automatically instrumented tool span.
+Instrumented prompt and response content is configured to be redacted.
 
 ## n8n setup and optional Streamlit connection
 
@@ -175,22 +189,26 @@ stop before allowance reservation. A live moderation request accepted
 the sample legitimate business brief. These checks verify integration
 behavior, not moderation accuracy across all topics.
 
-### Observability and cost
+### Observability coverage
 
-The recorded Langfuse run contained one parent trace and 54 child observations, including 19 model calls and eight MCP search calls.
+| Capability | CrewAI | n8n |
+| --- | --- | --- |
+| Run ID, status, and elapsed time in application logs | Yes | Yes, for Streamlit-triggered runs |
+| Agent and model tracing in Langfuse | Yes | Not integrated |
+| Token usage | Captured by Langfuse for instrumented calls | Reported separately in n8n's execution view |
+| Estimated model cost | Available in Langfuse for captured calls | Not currently measured |
 
-| Metric | Recorded value |
-| --- | ---: |
-| Input tokens | 17,048 |
-| Output tokens | 2,535 |
-| Total tokens | 19,583 |
-| Langfuse-calculated LLM cost | USD 0.00408 |
+One Azure n8n editor run reported approximately 33,306 tokens.
+This figure came from n8n, not Langfuse.
 
-The cost covers captured OpenAI model calls only. It excludes SerpAPI, hosting, and other operating costs, and is not an invoice reconciliation. Comparable n8n token and cost measurements have not yet been collected.
+The project demonstrates both orchestration approaches, but does not yet
+provide a controlled cost comparison. Langfuse's CrewAI cost estimate
+excludes search and hosting costs. Equivalent n8n cost tracking and
+matched-run evaluation remain future enhancements.
 
-The Streamlit interface records run IDs, implementation, status, elapsed seconds, and error type in `logs/runs.jsonl`. CrewAI traces include the matching run ID. The n8n UI timing measures the HTTP response wait; detailed n8n tracing is not yet integrated.
-
-Model, evidence depth, network conditions, and provider response times differ between implementations. These runs therefore do not establish that one framework is inherently faster, cheaper, or more reliable.
+These observations do not establish that one framework is inherently
+faster, cheaper, or more reliable. A controlled comparison would require
+matched briefs, models, research depth, and repeated runs.
 
 ## Limits and interpretation
 
