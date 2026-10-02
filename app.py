@@ -35,9 +35,8 @@ st.title("Market Research & GTM Planner")
 st.caption("An Agentic AI portfolio demo for research and strategy planning")
 
 st.markdown(
-    "Explore a product idea, its potential customers, competitors, and "
-    "go-to-market options. Enter a product or market, geography, and target "
-    "customer to generate a **provisional research and strategy report**."
+    "Explore a product or market idea, its potential customers, competitors, and "
+    "go-to-market options."
 )
 
 with st.expander("How to use this demo", expanded=True):
@@ -73,11 +72,6 @@ st.info(
     "allowance is shared across all visitors; failed runs also count."
 )
 
-st.caption(
-    "Explore a genuine business idea, research a market, and build "
-    "a provisional go-to-market plan."
-)
-
 # Require a configured access code before allowing billable submissions.
 expected_code = os.getenv("DEMO_ACCESS_CODE", "")
 
@@ -86,7 +80,7 @@ if not expected_code:
     st.stop()
 
 entered_code = st.text_input(
-    "Demo access code",
+    "Enter the Demo access code to proceed:",
     type="password",
     key="demo_access_code",
 )
@@ -113,11 +107,13 @@ except Exception:
 allowance_notice = st.empty()
 allowance_notice.info(
     f"Demo availability: {attempts_remaining} of {daily_limit} "
-    "research attempts remaining today."
-)
-st.caption(
+    "research attempts remaining today. "
     "Shared across all visitors. Resets daily at 00:00 UTC "
     "(5:30 AM India time). Failed research attempts also count."
+)
+st.caption(
+    "Enter a product or market, geography, and target "
+    "customer and click the button to generate a **provisional research and strategy report**."
 )
 
 if attempts_remaining == 0:
@@ -172,6 +168,9 @@ with st.form("research_brief"):
 # Consume the callback's request once; ignored repeat clicks start no work.
 submitted = st.session_state.pop("submission_requested", False)
 
+
+# Clear the previous outcome before processing a new submission.
+outcome_area = st.empty()
 
 def process_research_submission():
     global topic, geography, audience
@@ -318,7 +317,9 @@ def process_research_submission():
             # Refresh the indicator after this submission reserves an attempt.
             allowance_notice.info(
                 f"Demo availability: {remaining_runs(daily_limit)} of {daily_limit} "
-                "research attempts remaining today."
+                "research attempts remaining today. "
+                "Shared across all visitors. Resets daily at 00:00 UTC "
+                "(5:30 AM India time). Failed research attempts also count."
             )
 
         if submitted:
@@ -531,39 +532,40 @@ if submitted:
     finally:
         st.rerun()
 
-# Restore the previous outcome without starting another workflow.
-for kind, text in st.session_state.get("research_messages", []):
-    getattr(st, kind)(text)
+with outcome_area.container():
+    # Restore the previous outcome without starting another workflow.
+    for kind, text in st.session_state.get("research_messages", []):
+        getattr(st, kind)(text)
 
-saved = st.session_state.get("last_research_result")
+    saved = st.session_state.get("last_research_result")
 
-if saved:
-    if saved["implementation"] == "CrewAI":
-        st.subheader("Provisional GTM strategy")
-        st.markdown(saved["strategy"])
+    if saved:
+        if saved["implementation"] == "CrewAI":
+            st.subheader("Provisional GTM strategy")
+            st.markdown(saved["strategy"])
 
-        with st.expander("Market Analyst assessment"):
-            st.markdown(saved["analysis"])
+            with st.expander("Market Analyst assessment"):
+                st.markdown(saved["analysis"])
 
-        with st.expander("Research candidates and source checks"):
-            st.code(saved["research_notes"], language="json")
-            st.json(saved["source_checks"])
+            with st.expander("Research candidates and source checks"):
+                st.code(saved["research_notes"], language="json")
+                st.json(saved["source_checks"])
 
-        if saved["word_report"] is not None:
-            st.download_button(
-                label="Download Word report",
-                data=saved["word_report"],
-                file_name=f"gtm_report_{saved['run_id']}.docx",
-                mime=(
-                    "application/vnd.openxmlformats-officedocument."
-                    "wordprocessingml.document"
-                ),
-                on_click="ignore",
+            if saved["word_report"] is not None:
+                st.download_button(
+                    label="Download Word report",
+                    data=saved["word_report"],
+                    file_name=f"gtm_report_{saved['run_id']}.docx",
+                    mime=(
+                        "application/vnd.openxmlformats-officedocument."
+                        "wordprocessingml.document"
+                    ),
+                    on_click="ignore",
+                )
+        else:
+            document_id = saved["document_id"]
+            st.link_button(
+                "Open GTM report in Google Docs",
+                f"https://docs.google.com/document/d/{document_id}/edit",
             )
-    else:
-        document_id = saved["document_id"]
-        st.link_button(
-            "Open GTM report in Google Docs",
-            f"https://docs.google.com/document/d/{document_id}/edit",
-        )
-        st.caption(f"Document ID: {document_id}")
+            st.caption(f"Document ID: {document_id}")
