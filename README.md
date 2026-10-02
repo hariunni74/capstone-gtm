@@ -4,7 +4,9 @@ This project implements a market research and go-to-market planning workflow in 
 
 Both implementations use four agent roles: Head Planner, Research Agent, Market Analyst, and GTM Strategist. They share an MCP search service backed by SerpAPI. CrewAI execution tracing is integrated with Langfuse, and the Streamlit interface records run status and elapsed time for both implementations.
 
-The application currently runs locally. Public deployment is planned.
+The application supports local development and an on-demand Azure demo.
+Both CrewAI and n8n have completed end-to-end tests through the hosted
+Streamlit interface.
 
 The outputs are **provisional plans**. Search results are candidate leads; a successful search does not establish market size, buyer demand, competitor pricing, or regulatory conclusions. The agents label gaps and propose validation work when evidence is insufficient.
 
@@ -12,12 +14,12 @@ The outputs are **provisional plans**. Search results are candidate leads; a suc
 
 | Stage | CrewAI | n8n |
 | --- | --- | --- |
-| Input | Streamlit form in `app.py` | Chat Trigger, optionally called by Streamlit |
-| Planning | `GTMFlow.prepare_brief` and Head Planner | Head Planner, then Split Research Questions |
-| Research | Research Agent calls `search_market` through MCP for eight questions | Research Agent calls the same MCP tool for eight items; Collect Research combines results |
-| Assessment | Source fetch and passage extraction in `source_check.py`, then Market Analyst | Analyst Agent and Evidence Gate |
-| Strategy | GTM Strategist | Strategy Agent and Format GTM Report |
-| Output | Streamlit result; optional local Markdown export | Google Docs Create and Update nodes produce a native document in Drive |
+| Input | Streamlit brief form | Same Streamlit form, or editor Chat Trigger |
+| Planning | Head Planner generates eight search queries | Head Planner, then Split Research Questions |
+| Research | Python MCP client retrieves candidates; Research Agent classifies them | Research Agent calls MCP for eight items; Collect Research combines results |
+| Assessment | Accessible source passages checked, then Market Analyst | Analyst Agent and Evidence Gate; search leads remain unverified |
+| Strategy | GTM Strategist drafts provisional hypotheses | Strategy Agent and Format GTM Report |
+| Output | On-screen results and downloadable Word report | Google Doc; Azure workflow adds Reader link sharing and returns the document ID |
 
 The local MCP server in `mcp_server/server.py` exposes `search_market` using SerpAPI. CrewAI connects to `http://localhost:8000/mcp`; the n8n Docker container connects to `http://host.docker.internal:8000/mcp`. The server returns titles, URLs, and snippets, which must be checked before any claim is treated as verified.
 
@@ -26,15 +28,23 @@ The Streamlit **CrewAI** selection runs the Python Flow directly. The **n8n** se
 ## Project layout
 
 ```text
-app.py                              Streamlit interface
-src/gtm_agents/                     Agents, Flow, models, source checks, logging, tracing
-mcp_server/server.py                Streamable HTTP MCP search tool
-n8n/gtm_research_workflow.json      Main n8n workflow export
-n8n/gtm_mcp_connection_test.json    MCP connection-test workflow
-tests/                              Connectivity, timing, research, and export scripts
-pyproject.toml                      uv project dependencies
-uv.lock                             Locked dependency resolution
-.env.example                        Configuration template with placeholder values
+app.py                                 Streamlit interface
+src/gtm_agents/                        Agents, Flow, models, source checks, logging, tracing
+mcp_server/server.py                   Streamable HTTP MCP search tool
+n8n/gtm_research_workflow.json         Main n8n workflow export
+n8n/gtm_mcp_connection_test.json       MCP connection-test workflow
+tests/                                 Connectivity, timing, research, and export scripts
+pyproject.toml                         uv project dependencies
+uv.lock                                Locked dependency resolution
+.env.example                           Configuration template with placeholder values
+Dockerfile                             Application and MCP container image
+compose.yaml                           Base Docker services
+compose.azure.yaml                     Azure n8n and HTTPS configuration
+Caddyfile                              HTTPS reverse proxy configuration
+n8n/gtm_research_workflow_azure.json   Azure workflow with report sharing
+src/gtm_agents/report_export.py        CrewAI Word report generation
+src/gtm_agents/search_client.py        Python MCP search client
+src/gtm_agents/input_safety.py         Brief moderation screening
 ```
 
 Generated reports and logs are stored locally and excluded from Git. The n8n exports reference credentials by name or ID; importers must configure their own OpenAI and Google Docs credentials and check the MCP endpoint for their environment. Submission reports and screenshots were packaged separately and are not included in this repository.
@@ -144,6 +154,27 @@ The following are individual observations, not controlled benchmarks or averages
 
 The n8n run completed despite two failed searches. Successful workflow completion does not mean all research questions were answered.
 
+### Azure deployment verification — 2 October 2026
+
+These are individual runs using the India inventory forecasting brief,
+not averages or controlled framework benchmarks.
+
+| Execution path | Recorded duration | Result |
+| --- | ---: | --- |
+| CrewAI through public Streamlit | 184.843 seconds | Completed; Word report downloaded and Langfuse trace visible |
+| n8n through Azure editor | 241.568 seconds | Completed; populated Google Doc created |
+| n8n through public Streamlit | 269.493 seconds | Document ID returned; populated report available |
+
+A subsequent public Streamlit n8n run confirmed automatic Reader sharing:
+the new report opened in Incognito without signing into Google or
+manually changing its permissions.
+
+Field validation was checked locally and on the hosted UI. Simulated
+moderation tests confirmed that flagged briefs and screening failures
+stop before allowance reservation. A live moderation request accepted
+the sample legitimate business brief. These checks verify integration
+behavior, not moderation accuracy across all topics.
+
 ### Observability and cost
 
 The recorded Langfuse run contained one parent trace and 54 child observations, including 19 model calls and eight MCP search calls.
@@ -169,23 +200,149 @@ Model, evidence depth, network conditions, and provider response times differ be
 - The n8n workflow produces a Google Doc with plain text. The CrewAI Markdown output and n8n Google Doc are distinct artifacts from separate runs; they are not expected to have identical wording.
 - Google OAuth test mode may require reconnecting after the test-user authorization expires. Secrets, `.env`, `.venv`, logs with sensitive data, and local credentials are excluded from the submission.
 
-## Deployment status and roadmap
+## Azure deployment
 
-The project currently runs locally in WSL Ubuntu, with n8n running in Docker. No public application deployment is available yet.
+The demo runs on an Ubuntu 24.04 Azure VM using Docker Compose.
 
-Planned work before sharing a hosted demo:
+Public application:
+https://hariunni74-gtm-demo.centralindia.cloudapp.azure.com
 
-- Add access controls and usage limits to manage billable executions.
-- Configure hosted secrets and service endpoints.
-- Package the Streamlit app and MCP service for Azure deployment.
-- Protect the n8n editor and workflow endpoint.
-- Verify report generation and tracing in the hosted environment.
-- Add detailed n8n observability and collect comparable token and cost measurements.
+Availability is on demand. Contact the app owner to arrange access and
+receive a demo access code.
 
-The repository currently has no license. A license decision is pending before public release.
+### Services and access
 
-### Demo access and usage controls
+| Service | Purpose | Access |
+| --- | --- | --- |
+| Streamlit | Brief entry, workflow selection, and results | Public HTTPS through Caddy; demo code required for submissions |
+| MCP | Shared SerpAPI search service | Internal Docker network |
+| n8n | Research workflow and Google Docs generation | Internal workflow endpoint; editor through an SSH tunnel |
+| Caddy | HTTPS termination and reverse proxy | Public ports 80 and 443 |
 
-The Streamlit app requires `DEMO_ACCESS_CODE` before displaying the research form. `DEMO_DAILY_RUN_LIMIT` defaults to five research attempts per UTC day, shared across users and both implementations. Failed attempts also count.
+`compose.yaml` defines the application and MCP service.
+`compose.azure.yaml` adds n8n, Caddy, restart policies, and the internal
+n8n Chat URL. `Caddyfile` configures the public hostname.
 
-The counter is stored in `logs/usage.sqlite3` and survives app restarts. Hosted deployment requires persistent storage shared by all app instances. These controls apply to Streamlit submissions; direct access to the n8n endpoint must be protected separately.
+On Azure, both implementations reach MCP at `http://mcp:8000/mcp`.
+Streamlit calls the published n8n Chat Trigger through
+`http://n8n:5678/webhook/<chat-trigger-id>/chat`.
+
+The n8n editor is bound to the VM's loopback interface. Enabling the
+Chat Trigger does not expose port 5678 to the internet in this deployment.
+
+### Configuration and persistent data
+
+Create a private `.env` from `.env.example` and configure OpenAI,
+SerpAPI, Langfuse, and demo access settings. Store the stable
+`N8N_ENCRYPTION_KEY` in a separate private `.env.n8n`.
+
+Keep both files out of Git and restrict their file permissions.
+Configure OpenAI, Google Docs OAuth2, and Google Drive OAuth2 credentials
+in the n8n editor; workflow JSON exports do not supply usable credentials.
+
+The current editor tunnel uses this Google OAuth callback:
+
+http://localhost:5679/rest/oauth2-credential/callback
+
+Register the exact callback in the Google OAuth client's authorized
+redirect URIs and keep the tunnel open during authorization.
+
+Docker volumes persist application logs and the usage counter, n8n
+data and credentials, and Caddy certificate data. Preserve these volumes
+and securely back up the encryption key. Do not use `docker compose down -v`
+when stopping the demo.
+
+### Start the services
+
+Run on the Azure VM from the project directory:
+
+```bash
+sudo docker build -t capstone-gtm:local .
+sudo docker compose -f compose.yaml -f compose.azure.yaml up -d
+sudo docker compose -f compose.yaml -f compose.azure.yaml ps
+```
+
+To access the editor, run on the laptop and keep the terminal open:
+
+```bash
+ssh -i ~/.ssh/capstone_azure_v2 \
+  -N \
+  -L 127.0.0.1:5679:127.0.0.1:5678 \
+  -o ExitOnForwardFailure=yes \
+  azureuser@20.235.98.2
+```
+
+Open `http://localhost:5679`. This tunnel is for administration;
+visitors use the public Streamlit application.
+
+### On-demand VM operation
+
+Run these commands from a terminal authenticated to Azure:
+
+```bash
+# Start the demo VM.
+az vm start \
+  --resource-group rg-capstone-gtm-demo \
+  --name vm-capstone-gtm
+
+# Deallocate after use to stop VM compute billing.
+az vm deallocate \
+  --resource-group rg-capstone-gtm-demo \
+  --name vm-capstone-gtm
+```
+
+Deallocation makes the demo unavailable. Disk and public IP charges
+continue, and API usage is billed separately. Existing containers use
+restart policies to resume after the VM starts.
+
+## Demo access, privacy, and responsible use
+
+The UI explains the two workflows before requesting an access code:
+
+- **CrewAI:** Review results on screen and download a Word report.
+- **n8n:** Open the generated Google Doc; download Word or PDF from
+  Google Docs.
+
+Use public or fictional business information. Briefs are processed by
+external AI and search services. Do not enter personal data, credentials,
+confidential documents, or company secrets.
+
+The Azure n8n workflow shares each generated report with anyone holding
+its link, with Reader permission and search discovery disabled. Reports
+are stored in the app owner's Drive. This is link-based access, not
+private delivery to an authenticated visitor.
+
+### Submission controls
+
+Before research starts, Streamlit:
+
+1. Checks the demo access code.
+2. Validates required fields, length limits, and unsupported control characters.
+3. Screens the complete brief using OpenAI moderation.
+4. Reserves an attempt from the shared daily allowance.
+5. Starts the selected workflow.
+
+Flagged briefs are blocked. If moderation is unavailable or returns an
+invalid response, research is also blocked. These cases do not reserve
+a research attempt. Moderation is an automated screening layer and can
+miss harmful content or flag legitimate requests; it does not guarantee
+safe or accurate outputs.
+
+`DEMO_DAILY_RUN_LIMIT` defaults to five research attempts per UTC day,
+shared across visitors and both implementations. Failed research attempts
+count. The counter is stored in `logs/usage.sqlite3` on a persistent volume.
+
+The access code is a shared demo gate, not individual user authentication.
+These submission controls apply to the Streamlit entry point. Direct
+editor executions bypass them; the n8n editor and endpoint remain private
+in the Azure network configuration.
+
+## Further enhancements
+
+- Detailed n8n tracing and comparable model-cost measurements.
+- Output screening and broader safety evaluations.
+- Monthly API budget enforcement and concurrent-run controls.
+- Stronger user authentication and private report delivery.
+- Improved source retrieval, evidence coverage, and factual evaluation.
+
+The repository currently has no license. A license decision is pending.
