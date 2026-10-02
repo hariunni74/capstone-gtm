@@ -298,6 +298,50 @@
           "name": "Google Docs account"
         }
       }
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Create GTM Google Doc').first().json.id }}",
+          "mode": "id"
+        },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "reader",
+            "type": "anyone"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2336,
+        16
+      ],
+      "id": "ac665a95-8670-4801-8e6e-32abf23913f4",
+      "name": "Share Demo Report",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "RvJYB2xvBwmpCYvK",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return the document ID, rather than the sharing permission ID.\nconst document = $('Create GTM Google Doc').first().json;\n\nif (!document.id) {\n  throw new Error('The created document ID is missing.');\n}\n\nreturn [{\n  json: {\n    id: document.id,\n    document_id: document.id,\n    document_url: `https://docs.google.com/document/d/${document.id}/edit`,\n    name: document.name,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        16
+      ],
+      "id": "11bffaa2-286f-45cd-bc1f-03da4a6c9060",
+      "name": "Return Document Link"
     }
   ],
   "pinData": {},
@@ -466,6 +510,28 @@
           }
         ]
       ]
+    },
+    "Write GTM Report": {
+      "main": [
+        [
+          {
+            "node": "Share Demo Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Share Demo Report": {
+      "main": [
+        [
+          {
+            "node": "Return Document Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -473,7 +539,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "529da8a4-bf98-4918-9bdb-4df30aa2fb5d",
+  "versionId": "2e5f4acb-5323-4f77-83e3-44b0a4a0e216",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "f678733e2a692678dbfce5b9abab269cfa8d7a524f831a4ca749b1204c948496"

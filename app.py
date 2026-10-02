@@ -18,13 +18,56 @@ from gtm_agents.run_logging import log_run
 from gtm_agents.observability import setup_observability
 from gtm_agents.usage_limits import reserve_run
 from gtm_agents.report_export import build_word_report
+from gtm_agents.input_safety import (
+    SafetyCheckUnavailable,
+    check_brief_safety,
+)
 
 load_dotenv()
 
 st.set_page_config(page_title="Market Research & GTM Planner", layout="wide")
 
-st.title("Multi-Agent Market Research & GTM Planner")
-st.caption("Compare n8n and CrewAI implementations using the same research brief.")
+st.title("Market Research & GTM Planner")
+st.caption("An Agentic AI portfolio demo for research and strategy planning")
+
+st.markdown(
+    "Explore a product idea, its potential customers, competitors, and "
+    "go-to-market options. Enter a product or market, geography, and target "
+    "customer to generate a **provisional research and strategy report**."
+)
+
+with st.expander("How to use this demo", expanded=True):
+    st.markdown(
+        """
+1. **Request access:** Contact the app owner through the LinkedIn post or
+   message that brought you here to receive a demo access code.
+2. **Describe your idea:** Enter the product or market, target geography,
+   and the customers who would buy it.
+3. **Choose a workflow:**
+   - **CrewAI:** Python agents research and assess your brief. Review the
+     results on screen and download a Word report.
+   - **n8n:** An automated agent workflow creates a Google Doc.
+     Open the report link, then use **File → Download** for Word or PDF.
+4. **Submit once and wait:** Recent Azure tests took approximately
+   3–5 minutes. Timing varies; keep the page open while it runs.
+5. **Review critically:** Check sources, evidence gaps, and assumptions
+   before using the output for a business decision.
+"""
+    )
+
+st.warning(
+    "Use public or fictional business information only. Do not enter "
+    "personal data, passwords, confidential documents, or company secrets. "
+    "Your brief is processed by external AI and search services. "
+    "n8n reports are stored in the app owner's Google Drive and are "
+    "readable by anyone holding their report link."
+)
+
+st.info(
+    "This is an experimental portfolio demo. Outputs may contain errors "
+    "or incomplete evidence and require human review. The daily run "
+    "allowance is shared across all visitors; failed runs also count."
+)
 
 # Require a configured access code before allowing billable submissions.
 expected_code = os.getenv("DEMO_ACCESS_CODE", "")
@@ -65,6 +108,61 @@ with st.form("research_brief"):
     )
     implementation = st.selectbox("Run with", ["CrewAI", "n8n"])
     submitted = st.form_submit_button("Create GTM plan", type="primary")
+
+# Validate both workflows' inputs before reserving a demo attempt.
+if submitted:
+    topic = topic.strip()
+    geography = geography.strip()
+    audience = audience.strip()
+
+    input_rules = [
+        ("Product or market", topic, 10, 1000),
+        ("Target geography", geography, 2, 100),
+        ("Target customer", audience, 5, 300),
+    ]
+
+    validation_errors = []
+    for label, value, minimum, maximum in input_rules:
+        if not minimum <= len(value) <= maximum:
+            validation_errors.append(
+                f"{label} must contain {minimum}–{maximum} characters."
+            )
+
+        # Allow normal whitespace, but reject hidden control characters.
+        if any(
+            ord(character) < 32 and character not in "\n\r\t"
+            for character in value
+        ):
+            validation_errors.append(
+                f"{label} contains unsupported control characters."
+            )
+
+    if validation_errors:
+        for message in validation_errors:
+            st.error(message)
+        st.stop()
+
+# Screen validated inputs before starting research or consuming an attempt.
+if submitted:
+    try:
+        with st.spinner("Checking the research brief..."):
+            flagged = check_brief_safety(topic, geography, audience)
+    except SafetyCheckUnavailable:
+        st.error(
+            "We couldn't complete the safety check. "
+            "No research was started and no demo attempt was used. "
+            "Please try again later."
+        )
+        st.stop()
+
+    if flagged:
+        st.warning(
+            "This brief was flagged by automated safety screening. "
+            "No research was started and no demo attempt was used. "
+            "If your request is legitimate business research, contact "
+            "the app owner for review."
+        )
+        st.stop()
 
 # Reserve an allowance before starting either implementation.
 if submitted and topic.strip() and geography.strip() and audience.strip():
