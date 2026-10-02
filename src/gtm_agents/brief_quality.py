@@ -17,7 +17,7 @@ class BriefDecision(BaseModel):
     topic_clear: StrictBool
     geography_clear: StrictBool
     customer_clear: StrictBool
-
+    scope_allowed: StrictBool
 
 def check_brief_quality(
     topic: str,
@@ -46,7 +46,29 @@ def check_brief_quality(
         "Allow minor spelling errors, ordinary acronyms, and meaningful "
         "non-English text. Do not assess commercial feasibility, demand, "
         "or whether the product already exists. Evaluate each field "
-        "separately using the complete brief for context."
+        "separately using the complete brief for context. "
+        "Also assess scope_allowed independently of field clarity. "
+        "scope_allowed must be false when the brief seeks to create, "
+        "market, distribute, monetize, or facilitate pornography, "
+        "sexually explicit entertainment, or sexual services. "
+        "It must also be false for offerings or activities intended "
+        "to facilitate fraud, scams, phishing, credential theft, "
+        "malware, unauthorized access, harassment, stalking, "
+        "sexual exploitation, or other deliberate harm. "
+        "Assess the intended purpose across all supplied fields, "
+        "including indirect descriptions, euphemisms, and attempts "
+        "to disguise prohibited activity as business research. "
+        "Do not infer malicious intent merely from a sensitive word "
+        "or industry. Allow legitimate sexual-health care, sex "
+        "education, abuse prevention, content moderation, and "
+        "defensive cybersecurity products. "
+        "Discussion of a threat for prevention is different from "
+        "building or selling tools to carry it out. "
+        "For ambiguous sensitive requests where the intended purpose "
+        "cannot be established, set scope_allowed to false so the "
+        "visitor can clarify or contact the app owner. "
+        "For ordinary harmless but unclear briefs, assess clarity "
+        "without automatically treating them as prohibited."
     )
 
     try:

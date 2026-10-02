@@ -73,6 +73,12 @@ st.info(
     "allowance is shared across all visitors; failed runs also count."
 )
 
+st.caption(
+    "Supported use: legitimate business and market research. "
+    "Pornography, sexual-service offerings, and malicious activities "
+    "are outside this demo's scope."
+)
+
 # Require a configured access code before allowing billable submissions.
 expected_code = os.getenv("DEMO_ACCESS_CODE", "")
 
@@ -180,8 +186,28 @@ if submitted:
             "Please try again later."
         )
         st.stop()
+    # Enforce demo scope for both workflows before reserving an attempt.
+    if not decision.scope_allowed:
+        st.warning(
+            "This brief is outside the demo's supported scope, "
+            "or its intended use needs clarification."
+        )
+        st.info(
+            "The demo does not support pornography, sexual-service "
+            "offerings, or activities intended to enable fraud, "
+            "cyber abuse, harassment, exploitation, or deliberate harm. "
+            "Legitimate health, education, prevention, and defensive "
+            "security research is supported."
+        )
+        st.caption(
+            "No research was started and no demo attempt was used. "
+            "If your request has a legitimate purpose, clarify it "
+            "or contact the app owner for review."
+        )
+        st.stop()
 
     corrections = []
+
     if not decision.topic_clear:
         corrections.append(
             "Product or market: describe what you want to research. "

@@ -10,6 +10,77 @@ Streamlit interface.
 
 The outputs are **provisional plans**. Search results are candidate leads; a successful search does not establish market size, buyer demand, competitor pricing, or regulatory conclusions. The agents label gaps and propose validation work when evidence is insufficient.
 
+## Understanding the project
+
+### What is agentic AI, and why use it here?
+
+Traditional AI commonly performs a defined task, such as predicting
+demand, classifying a document, or recommending a product. Generative
+AI can create text and other content from a prompt. Agentic AI adds
+the ability to pursue a goal through multiple steps, use tools, and
+make decisions within defined boundaries. These approaches overlap:
+an agent often uses generative AI as its reasoning component.
+
+For example, a single chatbot could draft a GTM plan from its existing
+knowledge. This project instead breaks the work into planning,
+external research, evidence assessment, and strategy development.
+Specialized agents handle these stages, with web search providing
+information beyond the model's stored knowledge.
+
+The use case is suitable for exploring agentic AI because research
+questions vary with the user's brief, external information is needed,
+and findings require interpretation before recommendations are made.
+
+This implementation uses a controlled sequence with bounded tool
+access. It is not an unrestricted autonomous system. Input screening,
+usage limits, evidence checks, and human review remain important.
+
+A simpler workflow with ordinary API calls could also implement this
+use case. Multiple agents do not automatically improve accuracy:
+their value must be assessed against additional cost, latency, and
+operational complexity.
+
+### Why CrewAI and n8n?
+
+Implementing the workflow in both CrewAI and n8n was a capstone
+requirement. It also provided an opportunity to compare a Python
+approach with visual workflow automation.
+
+Both implementations follow the same four-role sequence:
+Head Planner, Research Agent, Market Analyst, and GTM Strategist.
+Their internal logic and evidence handling differ, so this is a
+comparison of two implementations rather than a controlled benchmark
+of the frameworks themselves.
+
+| Aspect | CrewAI | n8n |
+| --- | --- | --- |
+| What it is | A framework for building agents, tasks, and structured flows in code. | A visual workflow automation platform that combines application integrations, code, and AI nodes. |
+| Main strength for this project | Flexibility to implement custom source checks, validation, logging, and Word export in Python. | A visible execution path and convenient integration with Google Docs and Drive. |
+| Main tradeoff | Requires Python skills and responsibility for dependencies, deployment, and application behavior. | Complex branching, custom logic, and large prompts can become harder to maintain on a visual canvas. |
+| Research in this implementation | Python retrieves MCP search candidates; model-based assessment and page checks process them. | The Research Agent calls the MCP search tool within the workflow. |
+| Observability in this implementation | Langfuse traces plus application run logs. | n8n execution history plus application run logs; Langfuse tracing is not integrated. |
+| Report delivery | Downloadable Word document. | Google Doc accessible through the returned link. |
+
+Neither framework guarantees reliable research. Search quality,
+source relevance, prompts, validation, and evaluation strongly
+influence the final result.
+
+### What other approaches could be considered?
+
+The course also introduced AutoGen and Microsoft Foundry. These were
+learning topics, not alternative implementations tested in this project.
+
+| Option | Potential fit | Tradeoff or consideration |
+| --- | --- | --- |
+| AutoGen | Exploring conversational collaboration and coordination between agents. | AutoGen is now in maintenance mode; Microsoft recommends Microsoft Agent Framework for new projects. |
+| Microsoft Agent Framework | Building custom agent orchestration with Microsoft's current agent development framework. | Would require a separate implementation and evaluation rather than a direct replacement of the existing workflows. |
+| Microsoft Foundry Agent Service | Using a managed Azure service to build, host, and operate agents. | Requires evaluation of service costs, regional availability, identity, and deployment requirements. It is a platform/service, rather than an equivalent of the CrewAI library. |
+| A simpler Python pipeline | Running a fixed sequence of search, analysis, and report-generation API calls. | Could reduce orchestration complexity, while requiring explicit implementation of state, retries, and integrations. |
+
+The current demo runs Docker containers on an Azure virtual machine.
+It does not use Microsoft Foundry Agent Service. Alternative approaches
+are future evaluation options, not claims of equivalent performance.
+
 ## Architecture
 
 | Stage | CrewAI | n8n |
@@ -353,6 +424,8 @@ invalid response, research is also blocked. These cases do not reserve
 a research attempt. Moderation is an automated screening layer and can
 miss harmful content or flag legitimate requests; it does not guarantee
 safe or accurate outputs.
+
+Application scope screening: Before either workflow starts, the app checks whether the brief is understandable and within the demo’s supported scope. It excludes pornography, sexual-service offerings, and malicious activities such as fraud, credential theft, harassment, or exploitation. Legitimate sexual-health, education, prevention, and defensive cybersecurity research remains supported. Rejected briefs or unavailable screening do not start research or consume a demo attempt. Screening uses a model and may make mistakes; it does not guarantee detection of every prohibited request.
 
 `DEMO_DAILY_RUN_LIMIT` defaults to five research attempts per UTC day,
 shared across visitors and both implementations. Failed research attempts
